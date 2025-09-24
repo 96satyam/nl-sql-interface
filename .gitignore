@@ -1,0 +1,23 @@
+# Byte-code files
+*.pyc
+__pycache__/
+
+# Environment variables
+.env
+.venv/
+env/
+venv/
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# Database files
+*.sqlite3
+*.db
+*.db-journal
+
+# Generated files
+embeddings/
+data/
+*.log
