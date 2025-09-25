@@ -135,16 +135,7 @@ nl-sql-interface/
 
     The application will open in your web browser.
 
-## ☁️ Deployment
 
-This application is designed to be deployed on Streamlit Community Cloud.
-
-1.  **Push to GitHub**: Ensure your project is pushed to a public GitHub repository.
-2.  **Use a Cloud Database**: You cannot use a local Docker container for a deployed app. A free service like Supabase is recommended, as it provides a cloud-hosted PostgreSQL database with `pgvector` pre-installed. You will need to run the data preparation scripts (steps 6.1-6.4 above) on your Supabase instance.
-3.  **Deploy on Streamlit Cloud**:
-    *   Connect your GitHub account to Streamlit Community Cloud.
-    *   Select your repository and deploy.
-    *   In the "Advanced settings", add all the variables from your `.env` file to the Secrets section.
 
 ## 📈 Future Improvements
 
