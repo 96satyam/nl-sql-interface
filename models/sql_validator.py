@@ -4,10 +4,10 @@ DENY_LIST = [
     "merge", "create", "grant", "revoke"
 ]
 
-# Define a complexity limit
+# a complexity limit
 MAX_JOINS = 3
 
-# Define a default result limit
+# a default result limit
 DEFAULT_LIMIT = 100
 
 def is_query_safe(sql_query: str) -> bool:

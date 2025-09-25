@@ -1,14 +1,16 @@
 import psycopg2
 from faker import Faker
 import random
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
 # --- DATABASE CONNECTION DETAILS ---
 # Make sure your Docker container is running before executing this script.
-DB_NAME = "postgres"
-DB_USER = "postgres"
-DB_PASSWORD = "admin"  # <-- IMPORTANT: Use the password you set for your container.
-DB_HOST = "localhost"
-DB_PORT = "5432"
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
 
 # --- DATA GENERATION SETUP ---
 fake = Faker()

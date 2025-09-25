@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from sqlalchemy import text
 from config import database
 from models import query_processor
 from utils import helpers
@@ -25,7 +26,7 @@ with st.sidebar:
     st.subheader("Technology Stack")
     st.write("""
         - **Streamlit**: For the interactive web UI.
-        - **OpenAI GPT-4o-mini**: For NL-to-SQL translation.
+        - **OpenAI GPT-4o-mini**: For NL-to-SQL translation & chart recommendations.
         - **Sentence Transformers**: For creating vector embeddings.
         - **PostgreSQL with pgvector**: For hybrid search capabilities.
     """)
@@ -46,18 +47,19 @@ with col2:
     if st.button("What is the average salary by department?"):
         st.session_state.user_question = "What is the average salary by department?"
 with col3:
-    if st.button("Show order totals by date for the last 5 orders"):
-        st.session_state.user_question = "Show order totals by date for the last 5 orders"
+    if st.button("Show order totals by date for the last 10 orders"):
+        st.session_state.user_question = "Show order totals by date for the last 10 orders"
 st.write("---")
 
-# --- CHAT INTERFACE INITIALIZATION ---
+# --- SESSION STATE INITIALIZATION ---
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'latest_df' not in st.session_state:
     st.session_state.latest_df = None
-# --- THIS IS THE FIX ---
 if 'user_question' not in st.session_state:
     st.session_state.user_question = ""
+if 'chart_visible' not in st.session_state:
+    st.session_state.chart_visible = False
 
 # Display chat history
 for message in st.session_state.messages:
@@ -71,6 +73,7 @@ for message in st.session_state.messages:
 user_question_input = st.chat_input("Ask a question about your data...")
 if user_question_input:
     st.session_state.user_question = user_question_input
+    st.session_state.chart_visible = False # Hide old chart on new question
 
 # Process the question if one exists
 if st.session_state.user_question:
@@ -90,10 +93,10 @@ if st.session_state.user_question:
                 st.session_state.messages.append({"role": "assistant", "content": sql_query})
             else:
                 try:
-                    conn = database.get_db_connection()
-                    df = pd.read_sql_query(sql_query, conn)
-                    conn.close()
-                    
+                    engine = database.get_db_engine()
+                    with engine.connect() as connection:
+                        df = pd.read_sql_query(text(sql_query), connection)
+
                     st.success("Query executed successfully!")
                     
                     embedding_cols = [col for col in df.columns if 'embedding' in col]
@@ -107,10 +110,11 @@ if st.session_state.user_question:
                     st.error(f"An error occurred: {e}")
                     st.session_state.messages.append({"role": "assistant", "content": f"Error: {e}"})
     
-    # Reset the user question to prevent re-running
+    # Store the question that generated the latest dataframe for context
+    st.session_state.latest_query = st.session_state.user_question
     st.session_state.user_question = ""
 
-# Display buttons if there's a recent result
+# Display buttons and chart if there's a recent result
 if st.session_state.latest_df is not None:
     st.write("---")
     col1, col2 = st.columns(2)
@@ -119,4 +123,7 @@ if st.session_state.latest_df is not None:
         st.download_button(label="📥 Download as CSV", data=csv, file_name='query_results.csv', mime='text/csv')
     with col2:
         if st.button("📊 Build Chart"):
-            helpers.display_intelligent_chart(st.session_state.latest_df)
+            st.session_state.chart_visible = not st.session_state.chart_visible
+
+    if st.session_state.chart_visible:
+        helpers.display_intelligent_chart(st.session_state.latest_df, st.session_state.latest_query)

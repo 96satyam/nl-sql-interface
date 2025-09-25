@@ -1,5 +1,6 @@
 import openai
 import json
+from sqlalchemy import text
 from config import settings
 from utils import helpers
 from models import sql_validator, vector_search
@@ -7,70 +8,80 @@ from models import sql_validator, vector_search
 # Set the OpenAI API key
 openai.api_key = settings.OPENAI_API_KEY
 
-def _get_entity_from_query(query: str):
+def _extract_entities_from_query(query: str):
     """
-    Uses an LLM to identify a fuzzy product name from the user's query.
-    Returns the entity name or None.
+    Uses an LLM to identify fuzzy entities (product, employee, or customer names)
+    from the user's query.
     """
     prompt = f"""
-    You are an expert at extracting product names from user questions.
-    Analyze the following user question and extract the most likely product name.
+    You are an expert at extracting entities from user questions.
+    Analyze the user question and extract any product names, employee names, or customer names.
     
-    Return your answer in a JSON object with a single key "product_name".
-    If no specific product name is found, the value should be null.
+    Return a JSON object with keys "product_name", "employee_name", and "customer_name".
+    If an entity is not found, its value should be null.
 
     User Question: "{query}"
     
     JSON Response:
     """
-    
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.0,
-    )
-    
-    result = json.loads(response.choices[0].message.content)
-    return result.get("product_name")
-
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.0,
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception:
+        return {}
 
 def process_natural_language_query(query: str):
     """
     Takes a natural language query and converts it to a validated SQL query
-    using a hybrid search approach.
+    using a true hybrid search approach.
     """
     print(f"Received query: '{query}'")
-
-    # Step 1: Check for fuzzy product entities in the query
-    product_name_entity = _get_entity_from_query(query)
+    enriched_query = query
     
-    if product_name_entity:
-        print(f"Fuzzy entity found: '{product_name_entity}'. Performing vector search...")
-        
-        # Step 2: If an entity is found, use vector search to find the exact product
-        similar_products = vector_search.find_similar_products(product_name_entity)
-        
-        if not similar_products:
-            return "Error: Could not find a matching product for your query."
-            
-        # Get the ID and name of the top match
-        product_id, product_name = similar_products[0]
-        print(f"Vector search identified best match: ID={product_id}, Name='{product_name}'")
-        
-        # Step 3: Enrich the prompt with the precise product ID
-        enriched_query = f"{query} (specifically for product with id {product_id})"
-    else:
-        # If no entity, use the original query
-        enriched_query = query
+    entities = _extract_entities_from_query(query)
+    
+    if entities.get("employee_name"):
+        entity = entities["employee_name"]
+        print(f"Fuzzy employee entity found: '{entity}'. Performing vector search...")
+        similar_items = vector_search.find_similar_employees(entity)
+        if similar_items:
+            item_id, item_name = similar_items[0]
+            enriched_query = f"{query} (clarification: use employee with id {item_id} whose name is '{item_name}')"
+    
+    elif entities.get("product_name"):
+        entity = entities["product_name"]
+        print(f"Fuzzy product entity found: '{entity}'. Performing vector search...")
+        similar_items = vector_search.find_similar_products(entity)
+        if similar_items:
+            item_id, item_name = similar_items[0]
+            enriched_query = f"{query} (clarification: use product with id {item_id} whose name is '{item_name}')"
 
-    # Step 4: Generate the final SQL query using the (potentially enriched) query
+    elif entities.get("customer_name"):
+        entity = entities["customer_name"]
+        print(f"Fuzzy customer entity found: '{entity}'. Performing vector search...")
+        similar_items = vector_search.find_similar_customers(entity)
+        if similar_items:
+            item_id, item_name = similar_items[0]
+            enriched_query = f"{query} (clarification: use order involving customer '{item_name}' with order id {item_id})"
+
+    print(f"Enriched query for SQL generation: '{enriched_query}'")
+
     schema = helpers.get_schema_definition()
     prompt = f"""
     ### Instructions
-    You are an expert PostgreSQL assistant... (prompt continues as before)
+    You are an expert PostgreSQL assistant. Your task is to translate the user's question into a valid and secure PostgreSQL query.
+    - You MUST only output the SQL query. Do not include any other text, explanations, or markdown formatting.
+    - Do NOT allow any queries that modify the database, such as INSERT, UPDATE, DELETE, DROP, etc.
+    - Ensure the query is secure and does not contain any vulnerabilities.
+    - **IMPORTANT: Treat each question as a new, standalone query. Do not use context from previous questions.**
 
     ### Database Schema
+    Here is the schema of the database you are working with:
     {schema}
 
     ### User's Question
@@ -79,30 +90,23 @@ def process_natural_language_query(query: str):
     ### SQL Query
     """
     
-    # ... The rest of the function (API call, validation, sanitization) remains the same
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a PostgreSQL expert..."},
+                {"role": "system", "content": "You are a PostgreSQL expert that translates natural language to SQL."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.0,
             max_tokens=500
         )
         raw_response = response.choices[0].message.content.strip()
-        print(f"--- OpenAI Raw Response ---\n{raw_response}") # Let's print the raw response to see
-        
-        # --- NEW: Use the helper to extract only the SQL ---
         sql_query = helpers.extract_sql_from_response(raw_response)
-        
-        print(f"--- Extracted SQL ---\n{sql_query}")
         
         if not sql_validator.is_query_safe(sql_query):
             return "Error: The generated query is not safe to execute."
         
-        safe_sql_query = sql_validator.sanitize_and_limit_query(sql_query)
-        return safe_sql_query
+        return sql_validator.sanitize_and_limit_query(sql_query)
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return f"Error: {e}"
+        return f"Error: An unexpected error occurred: {e}"
+

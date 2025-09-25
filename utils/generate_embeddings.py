@@ -1,16 +1,18 @@
 import psycopg2
 from sentence_transformers import SentenceTransformer
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
 # --- DATABASE CONNECTION DETAILS ---
-DB_NAME = "postgres"
-DB_USER = "postgres"
-DB_PASSWORD = "admin" # <-- Use the password you set for your container
-DB_HOST = "localhost"
-DB_PORT = "5432"
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
 
 # --- EMBEDDING MODEL SETUP ---
 # This line downloads a pre-trained model.
-# The first time you run this, it will take a few minutes to download.
+
 print("Loading sentence transformer model...")
 model = SentenceTransformer('all-MiniLM-L6-v2')
 print("Model loaded.")
@@ -60,7 +62,7 @@ def generate_and_store_embeddings():
             # 3. Update the database with the new embeddings
             print("Updating database with embeddings...")
             for i, record_id in enumerate(ids):
-                embedding = embeddings[i].tolist() # Convert numpy array to list
+                embedding = embeddings[i].tolist()
                 cur.execute(
                     f"UPDATE {table_name} SET {embedding_col} = %s WHERE id = %s",
                     (embedding, record_id)
