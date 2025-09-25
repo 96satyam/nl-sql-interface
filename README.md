@@ -103,9 +103,9 @@ nl-sql-interface/
 
     ```
     OPENAI_API_KEY="sk-..."
-    DB_NAME="postgres"
-    DB_USER="postgres"
-    DB_PASSWORD="admin"
+    DB_NAME=""
+    DB_USER=""
+    DB_PASSWORD=""
     DB_HOST="localhost"
     DB_PORT="5432"
     ```
